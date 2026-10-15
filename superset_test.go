@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/spandigital/cel2filter"
+	"github.com/spandigital/cel2filter/dialect/googledrive"
 	"github.com/spandigital/cel2filter/dialect/opensearch"
 	"github.com/spandigital/cel2filter/dialect/s3vectors"
 	"github.com/spandigital/cel2filter/flatkeys"
@@ -32,6 +33,8 @@ var propertyExprs = []string{
 	`doc.kind == "leaf" && "x" in doc.tags`, `doc.kind == "leaf" || "x" in doc.tags`,
 	`doc.kind == "leaf" && doc.title.matches("x")`, `doc.kind == "leaf" || doc.title.matches("x")`,
 	`!("x" in doc.tags)`, `doc.tags.exists(t, t == "x")`, `size(doc.tags) == 1`, `doc.title == doc.section`,
+	`has(doc.labels)`, `size(doc.labels) > 0`, `size(doc.tags) != 0`, `size(doc.tags) > 1`, `2 <= size(doc.tags)`,
+	`doc.kind == "leaf" && size(doc.labels) > 0`, `!(size(doc.tags) == 0)`,
 	`doc.updated > timestamp("2024-06-01T00:00:00Z")`, `doc.updated >= timestamp("2024-06-01T00:00:00Z")`,
 	`doc.updated < timestamp("2024-06-01T00:00:00Z")`, `doc.updated <= timestamp("2024-06-01T00:00:00.0005Z")`,
 	`doc.updated > timestamp("2024-06-01T00:00:00.0005Z")`, `!(doc.updated > timestamp("2024-06-01T00:00:00Z"))`,
@@ -171,6 +174,7 @@ func TestSuperset(t *testing.T) {
 			require.NoError(t, err)
 			s3, _ := s3vectors.Render(res.Predicate)
 			osq, osExact, _ := opensearch.Render(res.Predicate)
+			drive := googledrive.Render(res.Predicate, driveOpts...)
 			for _, d := range docs {
 				out, _, err := prg.Eval(map[string]any{"doc": d})
 				if err != nil || types.IsError(out) {
@@ -191,6 +195,14 @@ func TestSuperset(t *testing.T) {
 					}
 					if res.Exact && s3.Exact && evalS3(s3.Filter, st) != accepted {
 						t.Fatalf("exact S3 filter %v disagrees on %v", s3.Filter, st)
+					}
+				}
+				if drive.Query != "" {
+					if matched && !evalDrive(drive.Query, d) {
+						t.Fatalf("Drive query %q rejects %v accepted by %v", drive.Query, d, res.Predicate)
+					}
+					if res.Exact && drive.Exact && evalDrive(drive.Query, d) != accepted {
+						t.Fatalf("exact Drive query %q disagrees on %v", drive.Query, d)
 					}
 				}
 				if osq != nil {

@@ -14,8 +14,9 @@ type Name string
 
 // The dialects the library ships.
 const (
-	S3Vectors  Name = "s3vectors"
-	OpenSearch Name = "opensearch"
+	S3Vectors   Name = "s3vectors"
+	OpenSearch  Name = "opensearch"
+	GoogleDrive Name = "googledrive"
 )
 
 // ErrUnsupportedFeature reports a predicate shape a dialect cannot handle at all (not a node it dropped).

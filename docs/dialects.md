@@ -79,6 +79,38 @@ if q != nil {
 body := map[string]any{"query": map[string]any{"bool": map[string]any{"must": textQuery, "filter": filters}}}
 ```
 
+## Google Drive (`dialect/googledrive`)
+
+Renders a Drive `files.list` query, the `q` parameter
+([search terms](https://developers.google.com/workspace/drive/api/guides/ref-search-terms),
+[labels](https://developers.google.com/workspace/drive/api/guides/search-labels)). Predicate fields mean
+nothing to Drive, so each one is mapped, and an unmapped field is treated as true:
+
+```go
+r := googledrive.Render(pred,
+	googledrive.WithTerm("title", "name", googledrive.String),
+	googledrive.WithTerm("updated", "modifiedTime", googledrive.Time),
+	googledrive.WithValues("type", func(v any) (string, bool, bool) {
+		if v == "document" {
+			return "mimeType = 'application/vnd.google-apps.document'", true, true
+		}
+		return "", false, false
+	}),
+	googledrive.WithLabels("labels", resolver), // a googledrive.LabelResolver
+)
+call := svc.Files.List().Q("trashed = false and (" + r.Query + ")").IncludeLabels(strings.Join(r.Labels, ","))
+```
+
+- `Eq` and `In` on string terms render `=`; `Prefix` renders `contains` and is inexact (Drive matches a prefix
+  of any word of `name`, and a substring of `mimeType`).
+- `Compare` on time terms renders `<`, `<=`, `>`, `>=` with RFC 3339 times. Drive takes whole seconds, so a
+  fractional bound widens to the enclosing second and is marked inexact.
+- `Not` renders `not (…)` over an exact child.
+- On the labels field, `Exists` asks the resolver's `Any` (Drive has no "has any label" term; return an OR
+  over every label id, and refuse when not all ids are known), and each flatkeys entry asks `Entry(label,
+  field, value)` for `'labels/ID' in labels`, `labels/ID.FIELD is not null` or a field value term.
+  `Result.Labels` lists the ids used, which Drive needs in `includeLabels`.
+
 ## Writing a dialect
 
 Implement `dialect.Dialect` (`Name`, `Render`) and call `dialect.Register` from `init`. Keep the three

@@ -172,10 +172,16 @@ func (t *translator) expr(e ast.Expr, neg bool) (Predicate, bool) {
 			}
 		case operators.Equals:
 			if len(args) == 2 {
+				if p, exact, ok := t.size(c.FunctionName(), args[0], args[1], neg); ok {
+					return p, exact
+				}
 				return t.equals(args[0], args[1], neg)
 			}
 		case operators.NotEquals:
 			if len(args) == 2 {
+				if p, exact, ok := t.size(c.FunctionName(), args[0], args[1], neg); ok {
+					return p, exact
+				}
 				return t.equals(args[0], args[1], !neg)
 			}
 		case operators.In:
@@ -184,6 +190,9 @@ func (t *translator) expr(e ast.Expr, neg bool) (Predicate, bool) {
 			}
 		case operators.Less, operators.LessEquals, operators.Greater, operators.GreaterEquals:
 			if len(args) == 2 {
+				if p, exact, ok := t.size(c.FunctionName(), args[0], args[1], neg); ok {
+					return p, exact
+				}
 				return t.compare(c.FunctionName(), args[0], args[1], neg)
 			}
 		case overloads.StartsWith:
@@ -312,13 +321,12 @@ func (t *translator) has(e ast.Expr, neg bool) (Predicate, bool) {
 		}
 		path = append(append([]string{}, path...), s.FieldName())
 		celPath := strings.Join(path, ".")
-		if _, isMap := t.o.encoders[celPath]; isMap {
-			return nil, false
-		}
 		key := celPath
 		if mapped, ok := t.o.fieldMap[celPath]; ok {
 			key = mapped
 		}
+		// An encoded map is stored as its list of entries, which is empty exactly when the map is, so
+		// presence of the map is presence of the stored list.
 		return Exists{Field: key}, true
 	case types.MapKind:
 		f, ok := t.resolve(s.Operand())
@@ -499,6 +507,98 @@ func (t *translator) compare(fn string, lhs, rhs ast.Expr, neg bool) (Predicate,
 		return nil, false
 	}
 	return t.leaf(Compare{Field: f.key, Op: op, Value: v}, f, neg)
+}
+
+// sizeOf resolves size(x) or x.size() on a list field or an encoded map field, which stores keep as a list
+// that is absent when empty.
+func (t *translator) sizeOf(e ast.Expr) (fieldRef, bool) {
+	if e.Kind() != ast.CallKind {
+		return fieldRef{}, false
+	}
+	c := e.AsCall()
+	var arg ast.Expr
+	switch {
+	case c.FunctionName() != overloads.Size:
+		return fieldRef{}, false
+	case c.IsMemberFunction() && len(c.Args()) == 0:
+		arg = c.Target()
+	case !c.IsMemberFunction() && len(c.Args()) == 1:
+		arg = c.Args()[0]
+	default:
+		return fieldRef{}, false
+	}
+	f, ok := t.resolve(arg)
+	collection := f.isList() || f.isMap() && f.enc != nil
+	if !ok || f.inMap() || !collection {
+		return fieldRef{}, false
+	}
+	return f, true
+}
+
+// size translates a comparison of size(x) with an integer literal. Whatever implies a non-empty collection
+// becomes Exists on the field: exactly when it means "not empty" (> 0, >= 1, != 0), as a superset when it asks
+// for more (> 2). A comparison an empty collection can satisfy (== 0, < 3) has no positive form and is dropped,
+// as is any negation. ok is false when the call is not a size comparison at all.
+func (t *translator) size(fn string, lhs, rhs ast.Expr, neg bool) (p Predicate, exact, ok bool) {
+	f, isSize := t.sizeOf(lhs)
+	if !isSize {
+		if f, isSize = t.sizeOf(rhs); !isSize {
+			return nil, false, false
+		}
+		rhs, fn = lhs, flip(fn) // n < size(x) is size(x) > n
+	}
+	v, isLit := literalOf(rhs)
+	n, isInt := v.(int64)
+	if !isLit || !isInt {
+		return nil, false, true
+	}
+	if neg {
+		// Negating "size compares to n" is a comparison that may admit the empty collection; only the
+		// negation of == 0 (that is, != 0) survives.
+		switch fn {
+		case operators.Equals:
+			fn = operators.NotEquals
+		case operators.NotEquals:
+			fn = operators.Equals
+		default:
+			return nil, false, true
+		}
+	}
+	var least int64 // the smallest size the comparison accepts; 0 means it accepts the empty collection
+	switch fn {
+	case operators.Greater:
+		least = n + 1
+	case operators.GreaterEquals:
+		least = n
+	case operators.Equals:
+		least = n
+	case operators.NotEquals:
+		if n != 0 {
+			return nil, false, true
+		}
+		least = 1
+	default: // < and <= always admit the empty collection
+		return nil, false, true
+	}
+	if least <= 0 {
+		return nil, false, true
+	}
+	return Exists{Field: f.key}, least == 1 && fn != operators.Equals, true
+}
+
+// flip mirrors an ordering operator for swapped operands; == and != are symmetric.
+func flip(fn string) string {
+	switch fn {
+	case operators.Greater:
+		return operators.Less
+	case operators.GreaterEquals:
+		return operators.LessEquals
+	case operators.Less:
+		return operators.Greater
+	case operators.LessEquals:
+		return operators.GreaterEquals
+	}
+	return fn
 }
 
 // coerce checks a literal against a field kind, converting an int literal for a double field.

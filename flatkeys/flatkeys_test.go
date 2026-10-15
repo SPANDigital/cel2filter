@@ -71,3 +71,28 @@ func TestEncode(t *testing.T) {
 		require.Equal(t, c.want, got)
 	}
 }
+
+func TestParseInvertsEntry(t *testing.T) {
+	val := func(s string) *string { return &s }
+	for _, c := range []struct {
+		key, field string
+		value      *string
+	}{
+		{"Classification", "", nil},
+		{"Classification", "Level", nil},
+		{"Classification", "Level", val("Confidential")},
+		{"A/B", "C=D", val("x/y=z")},
+		{`back\slash`, "f", val("")},
+	} {
+		entry := flatkeys.Entry(c.key, c.field, c.value)
+		key, field, value, ok := flatkeys.Parse(entry)
+		if !ok || key != c.key || field != c.field || (value == nil) != (c.value == nil) || value != nil && *value != *c.value {
+			t.Errorf("Parse(%q) = %q %q %v %v, want %q %q %v", entry, key, field, value, ok, c.key, c.field, c.value)
+		}
+	}
+	for _, bad := range []string{"", "A/B/", "A/B/C", "=x", "A=x"} {
+		if _, _, _, ok := flatkeys.Parse(bad); ok {
+			t.Errorf("Parse(%q) should fail", bad)
+		}
+	}
+}

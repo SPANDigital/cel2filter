@@ -96,11 +96,12 @@ construct: expression accepts ⇒ predicate accepts ⇒ each dialect's rendering
 | `doc.f in ["a", "b"]` | `In` | |
 | `doc.f.startsWith("a")` | `Prefix` | |
 | `has(doc.f)` | `Exists` | set and non-empty |
+| `has(doc.m)`, `size(doc.list) > 0`, `size(doc.m) != 0` | `Exists` | lists and encoded maps; `size(x) > 2` is a superset |
 | `doc.n > 3`, `doc.t >= timestamp("…")` | `Compare` | int, double, timestamp; `3 < doc.n` mirrors |
 | `doc.flag` | `Eq(flag, true)` | |
 | `a && b`, `a \|\| b`, `!a`, `a != b` | `And`, `Or`, `Not` | negation normal form |
 | `has(doc.m.k)`, `"k" in doc.m`, `doc.m.k.f == "v"` | `Eq` on the encoded entry | map fields with an `Encoder` |
-| `matches`, `contains`, arithmetic, ternaries, comprehensions, `size`, optional lookups, field-to-field | no constraint | `Exact` becomes false |
+| `matches`, `contains`, arithmetic, ternaries, comprehensions, `size(x) == 0`, optional lookups, field-to-field | no constraint | `Exact` becomes false |
 
 Field types come from the type-checker (`Convert` refuses an unchecked AST), so there is no schema to repeat.
 Cross-type numeric comparisons (`doc.count > 2.5`) need `cel.CrossTypeNumericComparisons(true)` on the
@@ -120,9 +121,11 @@ environment; the translator tightens a fractional bound on an integer field to t
 |---|---|---|---|---|
 | S3 Vectors | `dialect/s3vectors` | metadata filter JSON (`$and`, `$or`, `$eq`, `$in`, `$startsWith`, `$exists`, `$gt`…) | opt-in `WithNegation` (`$ne`, `$nin`) | numbers only; timestamps drop |
 | OpenSearch | `dialect/opensearch` | bool filter clauses (`term`, `terms`, `prefix`, `exists`, `range`, `bool`) | `must_not` on exact leaves | numbers and dates (millisecond-widened) |
+| Google Drive | `dialect/googledrive` | a `files.list` query string (`name`, `mimeType`, `modifiedTime`, label terms) | `not` on exact leaves | times (whole seconds) |
 
-Both take `WithFilterable(func(field string) bool)` for the fields the index can filter on; S3 Vectors also
-counts constraints against `WithMaxConstraints`. See [docs/dialects.md](docs/dialects.md).
+S3 Vectors and OpenSearch take `WithFilterable(func(field string) bool)` for the fields the index can filter
+on; S3 Vectors also counts constraints against `WithMaxConstraints`. Google Drive maps each field explicitly
+(`WithTerm`, `WithValues`, `WithLabels`). See [docs/dialects.md](docs/dialects.md).
 
 ## Match
 

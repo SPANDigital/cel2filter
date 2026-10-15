@@ -142,6 +142,29 @@ func Entry(key, field string, value *string) string {
 	return s
 }
 
+// Parse is the inverse of Entry: the first-level key, the field ("" for a key alone) and the value (nil for
+// a presence entry). ok is false for the list marker ("Key/Field/") and anything malformed.
+func Parse(entry string) (key, field string, value *string, ok bool) {
+	name, v, hasValue := splitValue(entry)
+	parts := splitName(name)
+	switch {
+	case len(parts) == 0 || parts[0] == "" || len(parts) > 2:
+		return "", "", nil, false
+	case len(parts) == 2 && parts[1] == "":
+		return "", "", nil, false
+	case hasValue && len(parts) != 2:
+		return "", "", nil, false
+	}
+	key = parts[0]
+	if len(parts) == 2 {
+		field = parts[1]
+	}
+	if hasValue {
+		value = &v
+	}
+	return key, field, value, true
+}
+
 // Canon renders a scalar the way values are stored and compared.
 func Canon(v any) string {
 	s, _ := canon(v)

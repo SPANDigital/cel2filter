@@ -76,6 +76,12 @@ has no key to match on. `doc.count > 3` and `doc.updated > timestamp(...)` are f
 `schema` package). Stores omit empty values, so `Exists` ("the key is present") is a superset. If your store
 writes empty strings or empty lists, `Exists` is still a superset, only less selective.
 
+The same goes for collections: `has(doc.m)` on a map field with an encoder (stored as its list of entries,
+absent when the map is empty) and `size(x)` compared with an integer literal on a list or encoded map field
+become `Exists`. It is exact when the comparison means "not empty" (`size(x) > 0`, `>= 1`, `!= 0`) and a
+superset when it asks for more (`size(x) > 2`, `size(x) == 3`). A comparison the empty collection satisfies
+(`size(x) == 0`, `size(x) < 3`) has no positive form and yields no constraint.
+
 ## Exactness
 
 `Result.Exact` is false whenever a node was dropped, a disjunction voided, the node cap exceeded, or an

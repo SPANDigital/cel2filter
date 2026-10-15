@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-15
+### Added
+- **Collection presence.** `has(doc.m)` on a map field with an encoder, and `size(x)` compared with an integer
+  literal on a list or encoded map field, translate to `Exists`: exactly for "not empty" (`> 0`, `>= 1`,
+  `!= 0`, `!(size(x) == 0)`), as a superset for larger thresholds (`size(x) > 2`, `size(x) == 3`). Comparisons
+  an empty collection satisfies (`== 0`, `< n`) still yield no constraint.
+- **`dialect/googledrive`**: renders a predicate as a Google Drive `files.list` query (`q`). Fields are mapped
+  by the caller: `WithTerm` for Drive string and time terms (`name`, `mimeType`, `modifiedTime`), `WithValues`
+  for fields whose values stand for a query fragment, `WithLabels` with a `LabelResolver` for a flatkeys
+  labels field (label, field and choice ids; "has any label" as an OR over every known id). The result lists
+  the label ids used, for `includeLabels`. Fractional time bounds widen to whole seconds.
+- **`flatkeys.Parse`**, the inverse of `Entry`.
+
+### Changed
+- `has(doc.m)` and `size(...)` comparisons on collections no longer yield an empty predicate (see above), so
+  `Result.Exact` can now be true for them.
+
 ## [0.1.0] - 2026-10-15
 ### Added
 - **Partial, sound translation of CEL to store filters.** `Convert` walks a type-checked AST into a predicate
