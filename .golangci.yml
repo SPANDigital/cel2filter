@@ -1,0 +1,64 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  settings:
+    goconst:
+      # Type-name switches, keyword maps, and String() methods repeat short
+      # domain literals by design; only flag heavy repetition.
+      ignore-tests: true
+      min-occurrences: 8
+  exclusions:
+    rules:
+      - path: ^examples/
+        linters:
+          - goconst
+      - path: ^testcases/
+        linters:
+          - goconst
+      - path: ^test/
+        linters:
+          - goconst
+  enable:
+    # Core linters (enabled by default)
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    
+    # Code quality linters (important)
+    - bodyclose
+    - goconst
+    - gocritic
+    - misspell
+    - revive
+    - unconvert
+    - unparam
+    - whitespace
+    
+    # Security linters
+    - gosec
+    
+    # Performance linters  
+    - prealloc
+    - perfsprint
+    
+  disable:
+    # Disabled for initial setup - can be enabled gradually
+    - cyclop
+    - dupl
+    - funlen
+    - gocognit
+    - gocyclo
+    - maintidx
+    - nestif
+    - varnamelen
+    - wrapcheck
+    - lll
+    - paralleltest
+    - testpackage
+    - nlreturn
